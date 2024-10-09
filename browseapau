@@ -1,0 +1,92 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+
+import os, sys
+
+from random import shuffle, choice
+from pathlib import Path
+
+from PyQt5.QtGui import *
+from PyQt5.QtCore import *
+from PyQt5.QtWidgets import *
+
+from browserbase import QImg, BrowserBase
+
+from string import ascii_uppercase as alpa
+from itertools import *
+from collections import *
+import sqlite3
+
+from Anana import getch
+from league import Contestant
+
+class Browser(BrowserBase):
+
+    def __init__(self):
+        self.reload_order()
+        self.lock_model = False
+        self.cur_t = 0
+        self.cur_i = 0
+        BrowserBase.__init__(self)
+
+    def reload_order(self):
+        self.order = list(Contestant.FULL.items())
+        shuffle(self.order)
+        self.order = iter(self.order)
+
+    def nxt_img(self):
+        if not self.lock_model:
+            try:
+                self.model, self.current = next(self.order)
+            except StopIteration:
+                self.reload_order()
+                self.model, self.current = next(self.order)
+
+        self.img = img = self.current.path
+        self.title = "[L] " if self.lock_model else ""
+        self.title += f"{self.model} -{self.current.path.parent} /{len(self.current)}"
+        self.set_img(str(img))
+
+    def del_img(self):
+        self.pp = self.pause
+        self.pause = True
+        ok = QMessageBox.question(self, "Delete IMG",
+                f"Are you sure you want to delete {self.img} ?",
+                QMessageBox.Yes | QMessageBox.No)
+        if ok == QMessageBox.Yes:
+            print("deleting", self.img)
+            self.current.remove(self.img)
+            os.remove(self.img)
+
+            self.nxt_img()
+        self.pause = self.pp
+
+    def lck_model(self):
+        self.lock_model = not self.lock_model
+        self.update_title()
+
+    def keyPressEvent(self, event):
+        menu = {Qt.Key_L: self.lck_model}
+        super().keyPressEvent(event, menu)
+
+
+if __name__ == "__main__":
+    from glob import glob
+
+    app = QApplication(sys.argv)
+    #Contestant.load()
+    for p in map(Path, sys.argv[1:]):
+        print("loading", p)
+        if p.is_dir():
+            list(map(lambda x: Contestant.new(path=x), p.glob('*')))
+        elif p.is_file():
+            list(map(lambda x: Contestant.new(path=x),
+                (l.strip() for l in p.read_text().splitlines() if l.strip())
+                    ))
+
+    if not Contestant.FULL:
+        print("no Contestant founds ?")
+        exit(1)
+
+    b = Browser().show()
+    sys.exit(app.exec_())
